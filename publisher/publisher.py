@@ -4,12 +4,13 @@ import time
 
 import paho.mqtt.client as mqtt
 
-from common.config import BROKER_IP, PORT, TOPIC
+from common.config import BROKER_IP, PORT, PUBLISHER_PASSWORD, PUBLISHER_USERNAME, TOPIC
 
 
 def main():
     client = mqtt.Client()
 
+    client.username_pw_set(PUBLISHER_USERNAME, PUBLISHER_PASSWORD)
     client.connect(BROKER_IP, PORT, 60)
     client.loop_start()
 

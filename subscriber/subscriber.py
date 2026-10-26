@@ -3,7 +3,13 @@ from datetime import datetime
 
 import paho.mqtt.client as mqtt
 
-from common.config import BROKER_IP, PORT, TOPIC
+from common.config import (
+    BROKER_IP,
+    PORT,
+    SUBSCRIBER_PASSWORD,
+    SUBSCRIBER_USERNAME,
+    TOPIC,
+)
 
 
 def on_connect(client, userdata, flags, rc):
@@ -25,6 +31,8 @@ def main():
 
     client.on_connect = on_connect
     client.on_message = on_message
+
+    client.username_pw_set(SUBSCRIBER_USERNAME, SUBSCRIBER_PASSWORD)
     client.connect(BROKER_IP, PORT, 60)
 
     try:

